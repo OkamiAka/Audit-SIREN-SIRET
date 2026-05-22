@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Audit SIREN / SIRET - BASE CLT</title>
+
+  <style>
+    :root{
+      --bg:#f4f6f9;
+      --card:#ffffff;
+      --text:#111827;
+      --muted:#6b7280;
+      --blue:#0078d4;
+      --blue2:#005ea6;
+      --ok:#d4edda;
+      --warn:#fff3cd;
+      --err:#f8d7da;
+      --head:#111827;
+      --border:#e5e7eb;
+    }
+    body{
+      font-family: Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 20px;
+    }
+    h1{ margin:0 0 10px 0; font-size: 20px; }
+    .sub{ color: var(--muted); margin-bottom: 14px; }
+
+    .bar{
+      display:flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      padding: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .bar input[type="file"]{ max-width: 420px; }
+    .btn{
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      padding: 8px 14px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 700;
+    }
+    .btn:hover{ background: var(--blue2); }
+
+    .btn.secondary{
+      background: #374151;
+    }
+    .btn.secondary:hover{
+      background: #111827;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+    }
+
+    .filters{
+      margin-top: 12px;
+      display:flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items:center;
+      padding: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .filters input, .filters select{
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      min-width: 220px;
+      background: #fff;
+    }
+    .filters select{ min-width: 180px; }
+
+    .stats{
+      margin-top: 12px;
+      display:flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items:center;
+    }
+
+    .table-card{
+      margin-top: 12px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .table-wrap{
+      max-height: 650px;
+      overflow: auto;
+    }
+
+    table{
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+    thead th{
+      position: sticky;
+      top: 0;
+      background: var(--head);
+      color: #fff;
+      text-align: left;
+      padding: 8px 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      z-index: 5;
+      border-bottom: 1px solid #000;
+    }
+    tbody td{
+      border-top: 1px solid var(--border);
+      padding: 6px 10px;
+      vertical-align: top;
+      white-space: nowrap;
+    }
+
+    tr.ok{ background: var(--ok); }
+    tr.warning{ background: var(--warn); }
+    tr.error{ background: var(--err); }
+
+    .muted{ color: var(--muted); font-weight: 600; }
+    .right{ margin-left:auto; }
+    .hint{ color: var(--muted); font-size: 12px; margin-top: 6px; }
+  </style>
+</head>
+
+<body>
+  <h1>📊 Audit SIREN / SIRET — BASE CLT</h1>
+  <div class="sub">Upload Excel → contrôle → téléchargement du résultat (table + Excel).</div>
+
+  <div class="bar">
+    <form method="POST" action="/process" enctype="multipart/form-data" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <input type="file" name="file" accept=".xlsx" required />
+      <button type="submit" class="btn">Lancer</button>
+    </form>
+
+    {% if download_id %}
+      <a href="/download/{{ download_id }}" class="right" style="text-decoration:none;">
+        <button class="btn">📥 Télécharger Excel résultat</button>
+      </a>
+    {% endif %}
+  </div>
+
+  {% if rows %}
+
+  <div class="filters">
+    <input type="text" id="search" placeholder="🔍 Recherche globale (nom, SIRET, ville…)" />
+    <select id="filterStatus">
+      <option value="">Tous les statuts</option>
+      <option value="ok">✅ OK</option>
+      <option value="warning">⚠️ Warning</option>
+      <option value="error">❌ Erreur</option>
+    </select>
+
+    <select id="filterType">
+      <option value="">Tous les Type_ID</option>
+      <option value="SIRET">SIRET</option>
+      <option value="SIREN">SIREN</option>
+      <option value="NOM">NOM</option>
+      <option value="fallback">fallback</option>
+    </select>
+
+    <button class="btn secondary" type="button" id="resetBtn">Reset</button>
+
+    <span class="right muted">Lignes affichées : <span id="shownCount">0</span> / {{ rows|length }}</span>
+  </div>
+
+  <div class="stats">
+    <span class="pill">Total : {{ rows|length }}</span>
+    <span class="pill">✅ OK : <span id="okCount">0</span></span>
+    <span class="pill">⚠️ Warning : <span id="warnCount">0</span></span>
+    <span class="pill">❌ Erreur : <span id="errCount">0</span></span>
+  </div>
+
+  <div class="table-card">
+    <div class="table-wrap">
+      <table id="table">
+        <thead>
+          <tr>
+            {% for k in rows[0].keys() %}
+              <th data-index="{{ loop.index0 }}" title="Cliquer pour trier">{{ k }}</th>
+            {% endfor %}
+          </tr>
+        </thead>
+
+        <tbody>
+          {% for r in rows %}
+            {% set statut = r["Statut"] if "Statut" in r else "" %}
+            <tr class="{% if 'OK' in statut %}ok{% elif '⚠️' in statut %}warning{% else %}error{% endif %}">
+              {% for v in r.values() %}
+                <td>{{ v }}</td>
+              {% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="hint">Astuce : filtre “fallback” pour isoler les lignes trouvées via NOM. Tri numérique auto (Score, SIREN…).</div>
+  </div>
+
+  <script>
+    (function(){
+      const table = document.getElementById("table");
+      if(!table) return;
+
+      const tbody = table.tBodies[0];
+      const searchEl = document.getElementById("search");
+      const statusEl = document.getElementById("filterStatus");
+      const typeEl = document.getElementById("filterType");
+
+      const okCount = document.getElementById("okCount");
+      const warnCount = document.getElementById("warnCount");
+      const errCount = document.getElementById("errCount");
+      const shownCount = document.getElementById("shownCount");
+
+      let sortDirection = true; // toggled each click
+
+      function getRowText(tr){
+        return tr.innerText.toUpperCase();
+      }
+
+      function getTypeId(tr){
+        // Type_ID est une des colonnes affichées, donc accessible via innerText
+        // On le détecte en cherchant un token typique dans la ligne
+        const t = tr.innerText;
+        if (t.includes("fallback")) return "fallback";
+        if (t.includes("SIRET")) return "SIRET";
+        if (t.includes("SIREN")) return "SIREN";
+        if (t.includes("NOM")) return "NOM";
+        return "";
+      }
+
+      function applyFilters(){
+        const q = (searchEl.value || "").toUpperCase().trim();
+        const st = statusEl.value;
+        const ty = typeEl.value;
+
+        let ok=0, warn=0, err=0, shown=0;
+
+        Array.from(tbody.rows).forEach(tr => {
+          const matchText = !q || getRowText(tr).includes(q);
+
+          let matchStatus = true;
+          if(st){
+            matchStatus = tr.classList.contains(st);
+          }
+
+          let matchType = true;
+          if(ty){
+            const tid = getTypeId(tr);
+            matchType = (tid === ty);
+          }
+
+          const show = matchText && matchStatus && matchType;
+          tr.style.display = show ? "" : "none";
+
+          if(show){
+            shown++;
+            if(tr.classList.contains("ok")) ok++;
+            else if(tr.classList.contains("warning")) warn++;
+            else err++;
+          }
+        });
+
+        okCount.textContent = ok;
+        warnCount.textContent = warn;
+        errCount.textContent = err;
+        shownCount.textContent = shown;
+      }
+
+      function tryParseNumber(s){
+        // gère "0.78", "0,78", " 123 "
+        const x = (s || "").trim().replace(",", ".");
+        const n = Number(x);
+        return Number.isFinite(n) ? n : null;
+      }
+
+      function sortByColumn(colIndex){
+        const rows = Array.from(tbody.rows);
+
+        sortDirection = !sortDirection;
+
+        rows.sort((a, b) => {
+          const A = (a.cells[colIndex]?.innerText || "").trim();
+          const B = (b.cells[colIndex]?.innerText || "").trim();
+
+          const nA = tryParseNumber(A);
+          const nB = tryParseNumber(B);
+
+          if(nA !== null && nB !== null){
+            return sortDirection ? (nA - nB) : (nB - nA);
+          }
+          return sortDirection ? A.localeCompare(B) : B.localeCompare(A);
+        });
+
+        rows.forEach(r => tbody.appendChild(r));
+      }
+
+      // events
+      searchEl.addEventListener("keyup", applyFilters);
+      statusEl.addEventListener("change", applyFilters);
+      typeEl.addEventListener("change", applyFilters);
+
+      document.getElementById("resetBtn").addEventListener("click", function(){
+        searchEl.value = "";
+        statusEl.value = "";
+        typeEl.value = "";
+        applyFilters();
+      });
+
+      Array.from(table.tHead.rows[0].cells).forEach(th => {
+        th.addEventListener("click", function(){
+          const idx = parseInt(th.getAttribute("data-index"), 10);
+          if(Number.isFinite(idx)) sortByColumn(idx);
+        });
+      });
+
+      // init
+      applyFilters();
+    })();
+  </script>
+
+  {% endif %}
+
+</body>
+</html>
